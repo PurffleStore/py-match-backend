@@ -1,0 +1,17 @@
+flask==3.1.2
+flask-cors==6.0.1
+pyodbc==5.2.0
+pydantic==2.11.7
+langchain-core==0.3.75
+langchain-openai==0.3.32
+python-dotenv==1.1.1
+gunicorn==22.0.0
+SQLAlchemy==2.0.41
+greenlet==3.2.3
+flask_sqlalchemy==3.1.1
+numpy==1.26.4  
+faiss-cpu==1.7.4  
+sentence-transformers==3.0.1  
+langchain==0.3.26
+openai>=1.99.9,<2.0.0
+pandas==2.2.3

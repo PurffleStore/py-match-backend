@@ -1,0 +1,113 @@
+# -----------------------
+# Python / Flask basics
+# -----------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Testing / coverage
+.pytest_cache/
+pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# Type checkers / linters (optional but handy)
+.mypy_cache/
+.dmypy.json
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb  # ignore notebooks unless you intend to track them
+
+# Logs & PIDs
+logs/
+*.log
+*.log.*
+*.pid
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.iml
+*.code-workspace
+
+# -----------------------
+# App-specific
+# -----------------------
+
+# Local environment files (keep examples if you want)
+.env
+.env.*
+!.env.example
+
+# Credentials / keys (VERY IMPORTANT)
+*.pem
+*.p12
+*.key
+*.crt
+*.cer
+*.der
+*.pfx
+*.enc
+*service-account*.json
+*credentials*.json
+*credential*.json
+*-sa.json
+*secret*.json
+learnenglish-ai-*.json
+gcloud*.json
+
+# Runtime/state files
+sessions.json
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+*.sql
+*.csv
+*.tsv
+*.parquet
+
+# Media / generated assets
+static/videos/
+static/audio/
+static/transcripts/
+uploads/
+tmp/
+temp/
+*.tmp
+
+# MoviePy / temp renders
+*.moviepy_temp*
+
+# -----------------------
+# Optional (Docker / Node)
+# -----------------------
+docker-compose.override.yml
+*.local.yml
+
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
