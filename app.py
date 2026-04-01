@@ -14,6 +14,7 @@ from faiss_service import FAISS_INDEX, TEXT_CHUNKS, HAS_FAISS, knowledge
 
 # Config
 from config import (
+    APP_ENV,
     SQL_DRIVER,
     SQL_SERVER,
     SQL_DB,
@@ -23,8 +24,7 @@ from config import (
     SQL_PORT,
     SQL_ENCRYPT,
     SQL_TRUSTCERT,
-    IS_HUGGING_FACE,
-    PROGRESS_TBL,  # make sure this exists in config.py
+    PROGRESS_TBL,
 )
 
 from models import db
@@ -46,7 +46,7 @@ def create_app():
     CORS(app, resources={r"/*": {"origins": "*"}})
 
     print("🚀 DEBUG: Starting app creation...")
-    print(f"🚀 DEBUG: IS_HUGGING_FACE = {IS_HUGGING_FACE}")
+    print(f"🚀 DEBUG: APP_ENV = {APP_ENV}")
     print(f"🚀 DEBUG: SQL_SERVER = {SQL_SERVER}")
     print(f"🚀 DEBUG: SQL_DB = {SQL_DB}")
 
@@ -179,7 +179,7 @@ def create_app():
         return jsonify(
             {
                 "status": "ok",
-                "huggingface": bool(IS_HUGGING_FACE),  # keep this line (as you requested)
+                "environment": APP_ENV,  # keep this line (as you requested)
                 "llm": llm_mode,
                 "has_openai_key": bool(os.getenv("OPENAI_API_KEY")),
                 "db": {
