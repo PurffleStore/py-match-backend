@@ -1,5 +1,7 @@
+
 APP_BUILD = "HF-BUILD-2025-12-15-01"
 print("✅ RUNNING APP BUILD:", APP_BUILD, "FILE:", __file__)
+
 
 # app.py (HF-safe + corrected health + debug routes)
 import os

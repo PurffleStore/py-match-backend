@@ -6,7 +6,8 @@
 
 # auth_bp = Blueprint('auth', __name__)
 # print(f"✅ AUTH ROUTES: Blueprint '{auth_bp.name}' created")
-
+from config import APP_ENV
+from db import get_db_connection
 from flask import Blueprint, request, jsonify
 import traceback
 import os
@@ -25,43 +26,43 @@ print(f"✅ AUTH ROUTES: Blueprint '{auth_bp.name}' created")
 
 
 
-def get_db_connection():
-    if not HAS_PYODBC:
-        # This exception will be caught where get_db_connection() is called
-        raise RuntimeError("pyodbc is not installed or the ODBC driver is missing. Cannot connect to SQL Server.")
+# def get_db_connection():
+#     if not HAS_PYODBC:
+#         # This exception will be caught where get_db_connection() is called
+#         raise RuntimeError("pyodbc is not installed or the ODBC driver is missing. Cannot connect to SQL Server.")
 
-    # Read settings from environment variables
-    SQL_DRIVER = os.getenv("PYMATCH_SQL_DRIVER", "ODBC Driver 17 for SQL Server")
-    SQL_SERVER = os.getenv("PYMATCH_SQL_SERVER", r"DESKTOP-QBPLIVH")
-    SQL_DB = os.getenv("PYMATCH_SQL_DB", "PyMatch")
-    SQL_TRUSTED = os.getenv("PYMATCH_SQL_TRUSTED", "yes").lower()
+#     # Read settings from environment variables
+#     SQL_DRIVER = os.getenv("PYMATCH_SQL_DRIVER", "ODBC Driver 17 for SQL Server")
+#     SQL_SERVER = os.getenv("PYMATCH_SQL_SERVER", r"DESKTOP-QBPLIVH")
+#     SQL_DB = os.getenv("PYMATCH_SQL_DB", "PyMatch")
+#     SQL_TRUSTED = os.getenv("PYMATCH_SQL_TRUSTED", "yes").lower()
 
-    # Build connection string
-    if SQL_TRUSTED == "yes":
-        # Windows trusted connection (for local use)
-        conn_str = (
-            f"DRIVER={{{SQL_DRIVER}}};"
-            f"SERVER={SQL_SERVER};"
-            f"DATABASE={SQL_DB};"
-            f"Trusted_Connection=yes;"
-        )
-    else:
-        # SQL username / password (for AWS RDS, Hugging Face)
-        SQL_USER = os.getenv("PYMATCH_SQL_USER", "")
-        SQL_PASSWORD = os.getenv("PYMATCH_SQL_PASSWORD", "")
+#     # Build connection string
+#     if SQL_TRUSTED == "yes":
+#         # Windows trusted connection (for local use)
+#         conn_str = (
+#             f"DRIVER={{{SQL_DRIVER}}};"
+#             f"SERVER={SQL_SERVER};"
+#             f"DATABASE={SQL_DB};"
+#             f"Trusted_Connection=yes;"
+#         )
+#     else:
+#         # SQL username / password (for AWS RDS, Hugging Face)
+#         SQL_USER = os.getenv("PYMATCH_SQL_USER", "")
+#         SQL_PASSWORD = os.getenv("PYMATCH_SQL_PASSWORD", "")
 
-        conn_str = (
-            f"DRIVER={{{SQL_DRIVER}}};"
-            f"SERVER={SQL_SERVER};"
-            f"DATABASE={SQL_DB};"
-            f"UID={SQL_USER};"
-            f"PWD={SQL_PASSWORD};"
-        )
+#         conn_str = (
+#             f"DRIVER={{{SQL_DRIVER}}};"
+#             f"SERVER={SQL_SERVER};"
+#             f"DATABASE={SQL_DB};"
+#             f"UID={SQL_USER};"
+#             f"PWD={SQL_PASSWORD};"
+#         )
 
-    # Basic debug (do not print password)
-    print(f"🔗 AUTH ROUTES: Connecting to {SQL_SERVER}/{SQL_DB} with driver '{SQL_DRIVER}', trusted={SQL_TRUSTED}")
+#     # Basic debug (do not print password)
+#     print(f"🔗 AUTH ROUTES: Connecting to {SQL_SERVER}/{SQL_DB} with driver '{SQL_DRIVER}', trusted={SQL_TRUSTED}")
 
-    return pyodbc.connect(conn_str)
+#     return pyodbc.connect(conn_str)
 
 
 
@@ -148,66 +149,69 @@ def signup():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    print(f"🎯 AUTH ROUTES: /login endpoint called")
+    print("🎯 AUTH ROUTES: /login endpoint called")
+    print(f"🟢 LOGIN APP_ENV = {APP_ENV}")
+    conn = None
+
     try:
         data = request.get_json(force=True) or {}
-        print(f"🟢 AUTH ROUTES: Received login request with email: {data.get('email', 'not provided')}")
-        
         email = data.get("email")
         password = data.get("password")
 
         if not email or not password:
-            print(f"❌ AUTH ROUTES: Missing email or password")
             return jsonify({"success": False, "message": "Email and password are required."}), 400
 
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-            print(f"🟢 AUTH ROUTES: Looking for user with email: {email}")
-            cur.execute("SELECT user_id, name, email, password FROM Users WHERE email = ?", (email,))
+        if APP_ENV == "local":
+            cur.execute(
+                "SELECT user_id, name, email, password FROM Users WHERE email = ?",
+                (email,)
+            )
+            user = cur.fetchone()
+        else:
+            cur.execute(
+                "SELECT user_id, name, email, password FROM Users WHERE email = %s",
+                (email,)
+            )
             user = cur.fetchone()
 
-            if not user:
-                print(f"❌ AUTH ROUTES: User not found with email: {email}")
-                return jsonify({"success": False, "message": "User not found."}), 404
+        if not user:
+            return jsonify({"success": False, "message": "User not found."}), 404
 
+        if APP_ENV == "local":
             user_id, name, email, stored_password = user
-            print(f"🟢 AUTH ROUTES: Found user ID: {user_id}, Name: {name}")
+        else:
+            user_id = user["user_id"]
+            name = user["name"]
+            email = user["email"]
+            stored_password = user["password"]
 
-            # Use simple string comparison for plain text passwords
-            if stored_password != password:
-                print(f"❌ AUTH ROUTES: Password mismatch for user {user_id}")
-                return jsonify({"success": False, "message": "Invalid password."}), 401
+        if stored_password != password:
+            return jsonify({"success": False, "message": "Invalid password."}), 401
 
-            print(f"✅ AUTH ROUTES: Successful login for user {user_id}")
-            conn.close()
-            return jsonify({
-                "success": True,
-                "message": "Login successful.",
-                "user_id": user_id,
-                "name": name,
-                "email": email
-            }), 200
-
-        except pyodbc.Error as e:
-            print(f"❌ AUTH ROUTES: Database Error: {e}")
-            return jsonify({"success": False, "message": f"Database error: {e}"}), 500
-
-        except Exception as e:
-            print(f"❌ AUTH ROUTES: Unexpected Error: {e}")
-            traceback.print_exc()
-            return jsonify({"success": False, "message": f"Unexpected error: {e}"}), 500
+        return jsonify({
+            "success": True,
+            "message": "Login successful.",
+            "user_id": user_id,
+            "name": name,
+            "email": email
+        }), 200
 
     except Exception as e:
-        print(f"❌ AUTH ROUTES: Outer exception: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+
     finally:
         try:
-            conn.close()
+            if conn:
+                conn.close()
         except:
             pass
+
+
+
 
 @auth_bp.route('/test', methods=['GET'])
 def test():
