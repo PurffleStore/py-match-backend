@@ -2,47 +2,59 @@
 import os
 from dotenv import load_dotenv
 
-# --- load .env so OPENAI_API_KEY (and others) are available ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Load environment variables - priority: Hugging Face secrets > .env file
-IS_HUGGING_FACE = os.environ.get('HUGGINGFACE_SPACES') == 'true' or os.environ.get('SPACE_ID') is not None
-if not IS_HUGGING_FACE:
-    # Only load from .env file when running locally
-    load_dotenv(os.path.join(BASE_DIR, ".env"))
-else:
-    # On Hugging Face, secrets are automatically available as environment variables
-    print("Running on Hugging Face Spaces - using secrets from environment variables")
+# Load local .env file
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-if IS_HUGGING_FACE:
-    # Hugging Face Spaces configuration
-    DEFAULT_SQL_SERVER = "pykara-sqlserver.c5aosm6ie5j3.eu-north-1.rds.amazonaws.com,1433"
-    DEFAULT_SQL_DB = "PyMatch"
-    DEFAULT_SQL_TRUSTED = "yes"  # Use SQL authentication on Hugging Face
-else:
-    # Local development configuration
-    DEFAULT_SQL_SERVER = "DESKTOP-QBPLIVH"
-    DEFAULT_SQL_DB = "PyMatch"
-    DEFAULT_SQL_TRUSTED = "yes"  # Use Windows authentication locally
+# -------------------------------------------------
+# APP ENVIRONMENT
+# local       -> SQL Server / SSMS
+# production  -> Hostinger MySQL
+# -------------------------------------------------
+APP_ENV = os.getenv("APP_ENV", "local").lower().strip()
 
-SQL_DRIVER   = os.getenv("PYMATCH_SQL_DRIVER", "ODBC Driver 17 for SQL Server")
-SQL_SERVER   = os.getenv("PYMATCH_SQL_SERVER", DEFAULT_SQL_SERVER)
-SQL_DB       = os.getenv("PYMATCH_SQL_DB", DEFAULT_SQL_DB)
-SQL_TRUSTED  = os.getenv("PYMATCH_SQL_TRUSTED", DEFAULT_SQL_TRUSTED)  # yes/no
-SQL_USER      = os.getenv("PYMATCH_SQL_USER", "")
-SQL_PASSWORD  = os.getenv("PYMATCH_SQL_PASSWORD", "")
-SQL_PORT      = os.getenv("PYMATCH_SQL_PORT", "")
-SQL_ENCRYPT   = os.getenv("PYMATCH_SQL_ENCRYPT", "no").lower().strip()
-SQL_TRUSTCERT = os.getenv("PYMATCH_SQL_TRUST_CERT", "yes").lower().strip()
+# -------------------------------------------------
+# LOCAL SQL SERVER SETTINGS
+# Used only when APP_ENV=local
+# -------------------------------------------------
+LOCAL_SQL_DRIVER = os.getenv("LOCAL_SQL_DRIVER", "ODBC Driver 17 for SQL Server")
+LOCAL_SQL_SERVER = os.getenv("LOCAL_SQL_SERVER", "DESKTOP-QBPLIVH")
+LOCAL_SQL_DB = os.getenv("LOCAL_SQL_DB", "PyMatch")
+LOCAL_SQL_TRUSTED = os.getenv("LOCAL_SQL_TRUSTED", "yes").lower().strip()   # yes / no
+LOCAL_SQL_USER = os.getenv("LOCAL_SQL_USER", "")
+LOCAL_SQL_PASSWORD = os.getenv("LOCAL_SQL_PASSWORD", "")
+LOCAL_SQL_PORT = os.getenv("LOCAL_SQL_PORT", "")
+LOCAL_SQL_ENCRYPT = os.getenv("LOCAL_SQL_ENCRYPT", "no").lower().strip()
+LOCAL_SQL_TRUST_CERT = os.getenv("LOCAL_SQL_TRUST_CERT", "yes").lower().strip()
 
+# -------------------------------------------------
+# PRODUCTION HOSTINGER MYSQL SETTINGS
+# Used only when APP_ENV=production
+# -------------------------------------------------
+PROD_MYSQL_HOST = os.getenv("PROD_MYSQL_HOST", "auth-db1644.hstgr.io")
+PROD_MYSQL_PORT = int(os.getenv("PROD_MYSQL_PORT", "3306"))
+PROD_MYSQL_DB = os.getenv("PROD_MYSQL_DB", "u943862301_PyMatch")
+PROD_MYSQL_USER = os.getenv("PROD_MYSQL_USER", "u943862301_PyMatch")
+PROD_MYSQL_PASSWORD = os.getenv("PROD_MYSQL_PASSWORD", "")
+
+# -------------------------------------------------
+# COMMON APP SETTINGS
+# -------------------------------------------------
 PROGRESS_TBL = os.getenv("PYMATCH_PROGRESS_TABLE", "LLMGeneratedQuestions")
 DEFAULT_N_QUESTIONS = int(os.getenv("PYMATCH_DEFAULT_N_QUESTIONS", "20"))
 DEFAULT_BATCH_SIZE = int(os.getenv("PYMATCH_DEFAULT_BATCH_SIZE", "10"))
 MAX_QUESTIONS = int(os.getenv("PYMATCH_MAX_QUESTIONS", "50"))
 
-# Some constants used across the app
+# -------------------------------------------------
+# CONSTANTS USED ACROSS THE APP
+# -------------------------------------------------
 COLOR_KEYS = ["blue", "green", "red", "yellow"]
 DOMAINS = ["marriage", "interview", "partnership", "general"]
 
-# # Faiss index / chunks defaults - user should update FAISS_INDEX_PATH or provide companion chunks file
-# FAISS_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "faiss_index_file.index")
+# Optional debug
+print(f"[config] APP_ENV = {APP_ENV}")
+if APP_ENV == "local":
+    print(f"[config] Using LOCAL SQL Server DB: {LOCAL_SQL_DB} on {LOCAL_SQL_SERVER}")
+else:
+    print(f"[config] Using PROD MySQL DB: {PROD_MYSQL_DB} on {PROD_MYSQL_HOST}:{PROD_MYSQL_PORT}")
