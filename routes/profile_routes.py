@@ -414,13 +414,37 @@ def check_marriage_profile(user_id: int):
                 conn.close()
         except:
             pass
-
-
 @profiles_bp.route('/api/check-assessment/<int:user_id>', methods=['GET'])
 def check_assessment(user_id: int):
     """Check if assessment is completed for user"""
+    conn = None
     try:
-        exists = LLMGeneratedQuestions.query.filter_by(user_id=user_id).first() is not None
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if APP_ENV == "local":
+            cur.execute("""
+                SELECT COUNT(*) as count
+                FROM LLMGeneratedQuestions
+                WHERE user_id = ?
+            """, (user_id,))
+        else:
+            cur.execute("""
+                SELECT COUNT(*) as count
+                FROM LLMGeneratedQuestions
+                WHERE user_id = %s
+            """, (user_id,))
+
+        row = cur.fetchone()
+
+        if APP_ENV == "local":
+            exists = row[0] > 0 if row else False
+        else:
+            if isinstance(row, dict):
+                exists = row.get("count", 0) > 0
+            else:
+                exists = row[0] > 0 if row else False
+
         return jsonify({"exists": exists}), 200
 
     except Exception as e:
@@ -429,22 +453,48 @@ def check_assessment(user_id: int):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except:
+            pass
+
 
 @profiles_bp.route('/api/check-assessment-completion/<int:user_id>', methods=['GET'])
 def check_assessment_completion(user_id: int):
     """Check if user has already completed the assessment"""
+    conn = None
     try:
-        record = LLMGeneratedQuestions.query.filter(
-            LLMGeneratedQuestions.user_id == user_id,
-            (
-                (LLMGeneratedQuestions.blue > 0) |
-                (LLMGeneratedQuestions.green > 0) |
-                (LLMGeneratedQuestions.yellow > 0) |
-                (LLMGeneratedQuestions.red > 0)
-            )
-        ).first()
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-        has_taken_assessment = record is not None
+        if APP_ENV == "local":
+            cur.execute("""
+                SELECT COUNT(*) as count
+                FROM LLMGeneratedQuestions
+                WHERE user_id = ?
+                  AND (blue > 0 OR green > 0 OR yellow > 0 OR red > 0)
+            """, (user_id,))
+        else:
+            cur.execute("""
+                SELECT COUNT(*) as count
+                FROM LLMGeneratedQuestions
+                WHERE user_id = %s
+                  AND (blue > 0 OR green > 0 OR yellow > 0 OR red > 0)
+            """, (user_id,))
+
+        row = cur.fetchone()
+
+        if APP_ENV == "local":
+            count = row[0] if row else 0
+        else:
+            if isinstance(row, dict):
+                count = row.get("count", 0)
+            else:
+                count = row[0] if row else 0
+
+        has_taken_assessment = count > 0
 
         print(f"🔍 Assessment check for user {user_id}: {has_taken_assessment}")
 
@@ -458,3 +508,12 @@ def check_assessment_completion(user_id: int):
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except:
+            pass
+
+
