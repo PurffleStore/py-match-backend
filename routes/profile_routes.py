@@ -6,6 +6,7 @@ import json
 from .auth_routes import get_db_connection   # reuse the working connection logic
 from database import row_to_dict            # still use row_to_dict from database.py
 from models import Marriage, LLMGeneratedQuestions
+from config import APP_ENV
 
 profiles_bp = Blueprint('profiles', __name__)
 
@@ -355,11 +356,50 @@ def get_marriage_profile(user_id: int):
             conn.close()
         except:
             pass
+# @profiles_bp.route('/api/check-marriage-profile/<int:user_id>', methods=['GET'])
+# def check_marriage_profile(user_id: int):
+#     """Check if marriage profile exists for user"""
+#     try:
+#         exists = Marriage.query.filter_by(user_id=user_id).first() is not None
+#         return jsonify({"exists": exists}), 200
+
+#     except Exception as e:
+#         print(f"Error checking marriage profile: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"error": str(e)}), 500
+
 @profiles_bp.route('/api/check-marriage-profile/<int:user_id>', methods=['GET'])
 def check_marriage_profile(user_id: int):
     """Check if marriage profile exists for user"""
+    conn = None
     try:
-        exists = Marriage.query.filter_by(user_id=user_id).first() is not None
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if APP_ENV == "local":
+            cur.execute("""
+                SELECT COUNT(*) as count
+                FROM Marriage
+                WHERE user_id = ?
+            """, (user_id,))
+        else:
+            cur.execute("""
+                SELECT COUNT(*) as count
+                FROM Marriage
+                WHERE user_id = %s
+            """, (user_id,))
+
+        row = cur.fetchone()
+
+        if APP_ENV == "local":
+            exists = row[0] > 0 if row else False
+        else:
+            if isinstance(row, dict):
+                exists = row.get("count", 0) > 0
+            else:
+                exists = row[0] > 0 if row else False
+
         return jsonify({"exists": exists}), 200
 
     except Exception as e:
@@ -368,32 +408,13 @@ def check_marriage_profile(user_id: int):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# @profiles_bp.route('/api/check-marriage-profile/<int:user_id>', methods=['GET'])
-# def check_marriage_profile(user_id: int):
-#     """Check if marriage profile exists for user"""
-#     try:
-#         conn = get_db_connection()
-#         cur = conn.cursor()
-        
-#         cur.execute("""
-#             SELECT COUNT(*) as count 
-#             FROM Marriage 
-#             WHERE user_id = ?
-#         """, (user_id,))
-        
-#         row = cur.fetchone()
-#         exists = row[0] > 0 if row else False
-        
-#         return jsonify({"exists": exists}), 200
-        
-#     except Exception as e:
-#         print(f"Error checking marriage profile: {e}")
-#         return jsonify({"error": str(e)}), 500
-#     finally:
-#         try:
-#             conn.close()
-#         except:
-#             pass
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except:
+            pass
+
 
 @profiles_bp.route('/api/check-assessment/<int:user_id>', methods=['GET'])
 def check_assessment(user_id: int):
@@ -407,33 +428,6 @@ def check_assessment(user_id: int):
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
-# @profiles_bp.route('/api/check-assessment/<int:user_id>', methods=['GET'])
-# def check_assessment(user_id: int):
-#     """Check if assessment is completed for user"""
-#     try:
-#         conn = get_db_connection()
-#         cur = conn.cursor()
-        
-#         cur.execute("""
-#             SELECT COUNT(*) as count 
-#             FROM LLMGeneratedQuestions 
-#             WHERE user_id = ?
-#         """, (user_id,))
-        
-#         row = cur.fetchone()
-#         exists = row[0] > 0 if row else False
-        
-#         return jsonify({"exists": exists}), 200
-        
-#     except Exception as e:
-#         print(f"Error checking assessment: {e}")
-#         return jsonify({"error": str(e)}), 500
-#     finally:
-#         try:
-#             conn.close()
-#         except:
-#             pass
 
 
 @profiles_bp.route('/api/check-assessment-completion/<int:user_id>', methods=['GET'])
@@ -464,35 +458,3 @@ def check_assessment_completion(user_id: int):
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-# @profiles_bp.route('/api/check-assessment-completion/<int:user_id>', methods=['GET'])
-# def check_assessment_completion(user_id: int):
-#     """Check if user has already completed the assessment"""
-#     try:
-#         conn = get_db_connection()
-#         cur = conn.cursor()
-        
-#         # 🚨 CRITICAL FIX: Check if user exists in LLMGeneratedQuestions table with valid data
-#         cur.execute("""
-#             SELECT COUNT(*) as count 
-#             FROM LLMGeneratedQuestions 
-#             WHERE user_id = ? AND (blue > 0 OR green > 0 OR yellow > 0 OR red > 0)
-#         """, (user_id,))
-        
-#         row = cur.fetchone()
-#         has_taken_assessment = row[0] > 0 if row else False
-        
-#         print(f"🔍 Assessment check for user {user_id}: {has_taken_assessment} (count: {row[0] if row else 0})")
-        
-#         return jsonify({
-#             "has_taken_assessment": has_taken_assessment,
-#             "message": "User has already taken assessment" if has_taken_assessment else "User can take assessment"
-#         }), 200
-        
-#     except Exception as e:
-#         print(f"Error checking assessment completion: {e}")
-#         return jsonify({"error": str(e)}), 500
-#     finally:
-#         try:
-#             conn.close()
-#         except:
-#             pass
