@@ -28,7 +28,7 @@
               "RelativeDocumentMoniker": "routes\\auth_routes.py",
               "ToolTip": "C:\\Oviya\\Py-Match\\deployment\\py-match-backend\\routes\\auth_routes.py",
               "RelativeToolTip": "routes\\auth_routes.py",
-              "ViewState": "AgIAAIkAAAAAAAAAAAAYwKAAAAAlAAAAAAAAAA==",
+              "ViewState": "AgIAAIcAAAAAAAAAAAAtwJQAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
               "WhenOpened": "2026-04-01T09:19:37.452Z",
               "EditorCaption": ""
@@ -41,7 +41,7 @@
               "RelativeDocumentMoniker": "app.py",
               "ToolTip": "C:\\Oviya\\Py-Match\\deployment\\py-match-backend\\app.py",
               "RelativeToolTip": "app.py",
-              "ViewState": "AgIAAOoAAAAAAAAAAAAowAgBAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAMUAAAAAAAAAAAAtwNYAAAAfAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
               "WhenOpened": "2026-04-01T09:19:17.76Z",
               "EditorCaption": ""
@@ -49,10 +49,6 @@
             {
               "$type": "Bookmark",
               "Name": "ST:0:0:{004be353-6879-467c-9d1e-9ac23cdf6d49}"
-            },
-            {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{34e76e81-ee4a-11d0-ae2e-00a0c90fffc3}"
             }
           ]
         }
