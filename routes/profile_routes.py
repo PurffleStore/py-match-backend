@@ -326,34 +326,28 @@ def update_answers(role: str):
         except:
             pass
 
-
 @profiles_bp.route('/api/marriage-profile/<int:user_id>', methods=['GET'])
 def get_marriage_profile(user_id: int):
     """Get marriage profile by user_id"""
-    conn = None
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+        profile = Marriage.query.filter_by(user_id=user_id) \
+            .order_by(Marriage.created_at.desc()) \
+            .first()
 
-        if APP_ENV == "local":
-            cur.execute("""
-                SELECT * FROM Marriage
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-            """, (user_id,))
-        else:
-            cur.execute("""
-                SELECT * FROM Marriage
-                WHERE user_id = %s
-                ORDER BY created_at DESC
-            """, (user_id,))
-
-        row = cur.fetchone()
-        if row is None:
+        if profile is None:
             return jsonify({"error": "Marriage profile not found"}), 404
 
-        profile = row_to_dict(cur, row)
-        return jsonify(profile), 200
+        result = {}
+        for column in Marriage.__table__.columns:
+            value = getattr(profile, column.name)
+
+            # optional: convert datetime to string
+            if hasattr(value, "isoformat"):
+                value = value.isoformat()
+
+            result[column.name] = value
+
+        return jsonify(result), 200
 
     except Exception as e:
         print(f"Error fetching marriage profile: {e}")
@@ -361,12 +355,47 @@ def get_marriage_profile(user_id: int):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-    finally:
-        try:
-            if conn:
-                conn.close()
-        except:
-            pass
+
+# @profiles_bp.route('/api/marriage-profile/<int:user_id>', methods=['GET'])
+# def get_marriage_profile(user_id: int):
+#     """Get marriage profile by user_id"""
+#     conn = None
+#     try:
+#         conn = get_db_connection()
+#         cur = conn.cursor()
+
+#         if APP_ENV == "local":
+#             cur.execute("""
+#                 SELECT * FROM Marriage
+#                 WHERE user_id = ?
+#                 ORDER BY created_at DESC
+#             """, (user_id,))
+#         else:
+#             cur.execute("""
+#                 SELECT * FROM Marriage
+#                 WHERE user_id = %s
+#                 ORDER BY created_at DESC
+#             """, (user_id,))
+
+#         row = cur.fetchone()
+#         if row is None:
+#             return jsonify({"error": "Marriage profile not found"}), 404
+
+#         profile = row_to_dict(cur, row)
+#         return jsonify(profile), 200
+
+#     except Exception as e:
+#         print(f"Error fetching marriage profile: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"error": str(e)}), 500
+
+#     finally:
+#         try:
+#             if conn:
+#                 conn.close()
+#         except:
+#             pass
 
 # @profiles_bp.route('/api/marriage-profile/<int:user_id>', methods=['GET'])
 # def get_marriage_profile(user_id: int):
