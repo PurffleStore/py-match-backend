@@ -1,14 +1,19 @@
 # routes/matching_routes.py
-from flask import Blueprint, request, jsonify, current_app
-import numpy as np
+from flask import Blueprint, request, jsonify
 from sqlalchemy import func
 import traceback
 
-from models import LLMGeneratedQuestions, Marriage, Users, ExpectationResponse, db
-from matching_functions import match_expectation_with_profiles, generate_expectation_explanation
-from character_functions import cosine_sim, generate_character_llm_explanation, generate_character_fallback_explanation
+from models import LLMGeneratedQuestions, Marriage, Users
+from matching_functions import (
+    match_expectation_with_profiles,
+    generate_expectation_explanation
+)
+from character_functions import (
+    cosine_sim,
+    generate_character_llm_explanation,
+    generate_character_fallback_explanation
+)
 from database import fetch_expectation_data, fetch_marriage_profile_data
-from config import COLOR_KEYS
 
 matching_bp = Blueprint('matching', __name__)
 
@@ -19,310 +24,323 @@ matching_bp = Blueprint('matching', __name__)
 @matching_bp.route('/api/match/<int:user_id>', methods=['GET'])
 def unified_match(user_id=None):
     """Unified match endpoint that handles all three modes"""
+    try:
+        # Get user_id from either path parameter or query parameter
+        if user_id is None:
+            raw_user_id = request.args.get("user_id", "")
+            try:
+                user_id = int(raw_user_id)
+            except (ValueError, TypeError):
+                return jsonify({"error": "Missing or invalid user_id"}), 400
 
-    # Get user_id from either path parameter or query parameter
-    if user_id is None:
+        # Get parameters safely
+        role = request.args.get("role", None)
+
+        raw_limit = request.args.get("limit", "10")
         try:
-            user_id = int(request.args.get("user_id", ""))
-        except ValueError:
-            return jsonify({"error": "Missing or invalid user_id"}), 400
+            limit = int(raw_limit)
+        except (ValueError, TypeError):
+            limit = 10
 
-    # Get parameters
-    role = request.args.get("role", None)
-    limit = int(request.args.get("limit", "10"))
-    exclude_self = request.args.get("exclude_self", "yes").lower() == "yes"
-    mode = request.args.get("mode", "expectation-only")  # Default to expectation-only
+        exclude_self = request.args.get("exclude_self", "yes").lower() == "yes"
+        mode = request.args.get("mode", "expectation-only").strip().lower()
 
-    print(f"🔍 DEBUG: Match request - user_id: {user_id}, mode: {mode}")
+        allowed_modes = ["expectation-only", "character", "expectation"]
+        if mode not in allowed_modes:
+            return jsonify({"error": "Invalid mode"}), 400
 
-    # 1) EXPECTATION ONLY
-    if mode == "expectation-only":
-        print("🎯 Using PURE EXPECTATION matching")
+        print(
+            f"🔍 DEBUG: Match request - "
+            f"user_id: {user_id}, role: {role}, mode: {mode}, "
+            f"limit: {limit}, exclude_self: {exclude_self}"
+        )
 
-        expectation_matches = match_expectation_with_profiles(user_id)
+        # 1) EXPECTATION ONLY
+        if mode == "expectation-only":
+            print("🎯 Using PURE EXPECTATION matching")
 
-        if not expectation_matches:
-            return jsonify({"error": f"No matches found for user_id={user_id}"}), 404
+            expectation_matches = match_expectation_with_profiles(user_id)
 
-        matches_by_range = {
-            "90-100": [],
-            "80-89": [],
-            "70-79": [],
-            "60-69": [],
-            "below_60": []
-        }
+            print(f"🔍 DEBUG: expectation_matches type = {type(expectation_matches)}")
+            print(f"🔍 DEBUG: expectation_matches count = {len(expectation_matches) if expectation_matches else 0}")
 
-        for match in expectation_matches:
-            score_percentage = match.get("expectation_score", 0) * 100
+            if not expectation_matches:
+                return jsonify({"error": f"No matches found for user_id={user_id}"}), 404
 
-            if score_percentage >= 90:
-                range_key = "90-100"
-            elif score_percentage >= 80:
-                range_key = "80-89"
-            elif score_percentage >= 70:
-                range_key = "70-79"
-            elif score_percentage >= 60:
-                range_key = "60-69"
-            else:
-                range_key = "below_60"
-
-            match_obj = {
-                "user_id": match["user_id"],
-                "name": match["name"],
-                "gender": match.get("gender", ""),
-                "city": match.get("location", ""),
-                "score_expect": match.get("expectation_score", 0),
-                "score_color": match.get("character_score", 0),
-                "final_score": round(score_percentage, 2),
-                "blue": 0,
-                "green": 0,
-                "yellow": 0,
-                "red": 0,
-                "explanations": [],
-                "explanation_source": "expectation"
+            matches_by_range = {
+                "90-100": [],
+                "80-89": [],
+                "70-79": [],
+                "60-69": [],
+                "below_60": []
             }
 
-            matches_by_range[range_key].append(match_obj)
+            for match in expectation_matches[:limit]:
+                score_percentage = match.get("expectation_score", 0) * 100
 
-        user = Users.query.filter_by(user_id=user_id).first()
+                if score_percentage >= 90:
+                    range_key = "90-100"
+                elif score_percentage >= 80:
+                    range_key = "80-89"
+                elif score_percentage >= 70:
+                    range_key = "70-79"
+                elif score_percentage >= 60:
+                    range_key = "60-69"
+                else:
+                    range_key = "below_60"
 
-        input_user = {
-            "user_id": user_id,
-            "role": "marriage",
-            "name": user.name if user else "Unknown",
-            "blue": 0,
-            "green": 0,
-            "yellow": 0,
-            "red": 0,
-            "created_at": None,
-        }
-
-        print(f"✅ DEBUG: Returning {len(expectation_matches)} pure expectation matches")
-
-        return jsonify({
-            "input_user": input_user,
-            "matches": matches_by_range,
-            "count": len(expectation_matches),
-            "mode": "expectation-only"
-        })
-
-    # 2) CHARACTER ONLY
-    elif mode == "character":
-        print("🎯 Using PURE CHARACTER matching - NO EXPECTATION FILTERING")
-
-        current_user = Marriage.query.filter_by(user_id=user_id).first()
-        if not current_user:
-            return jsonify({"error": f"No marriage profile found for user_id={user_id}"}), 404
-
-        user_gender = (current_user.gender or "").lower()
-        print(f"🔍 DEBUG: Current user gender: {user_gender}")
-
-        if user_gender.startswith('male'):
-            opposite_profiles = Marriage.query.filter(
-                func.lower(func.trim(Marriage.gender)) == "female"
-            ).all()
-        elif user_gender.startswith('female'):
-            opposite_profiles = Marriage.query.filter(
-                func.lower(func.trim(Marriage.gender)) == "male"
-            ).all()
-        else:
-            opposite_profiles = Marriage.query.filter(
-                Marriage.gender != current_user.gender
-            ).all()
-
-        print(f"🔍 DEBUG: Found {len(opposite_profiles)} opposite gender profiles (NO MANDATORY FILTERING)")
-
-        base_llm = LLMGeneratedQuestions.query.filter_by(user_id=user_id).first()
-        if not base_llm:
-            return jsonify({"error": f"No character data found for user_id={user_id}"}), 404
-
-        u_vec = base_llm.color_vec()
-
-        candidates = []
-        all_ids = [profile.user_id for profile in opposite_profiles]
-
-        llm_data = LLMGeneratedQuestions.query.filter(
-            LLMGeneratedQuestions.user_id.in_(all_ids)
-        ).all()
-        llm_map = {l.user_id: l for l in llm_data}
-
-        for profile in opposite_profiles:
-            if profile.user_id in llm_map:
-                llm_other = llm_map[profile.user_id]
-                v_vec = llm_other.color_vec()
-
-                character_score = cosine_sim(u_vec, v_vec)
-                score_percentage = round(character_score * 100, 2)
-
-                candidates.append({
-                    "user_id": profile.user_id,
-                    "name": profile.full_name,
-                    "gender": profile.gender,
-                    "location": profile.current_city,
-                    "score_color": character_score,
-                    "score_expect": 0,
-                    "final_score": score_percentage,
-                    "blue": llm_other.blue,
-                    "green": llm_other.green,
-                    "yellow": llm_other.yellow,
-                    "red": llm_other.red,
+                match_obj = {
+                    "user_id": match.get("user_id"),
+                    "name": match.get("name", "Unknown"),
+                    "gender": match.get("gender", ""),
+                    "city": match.get("location", ""),
+                    "score_expect": match.get("expectation_score", 0),
+                    "score_color": match.get("character_score", 0),
+                    "final_score": round(score_percentage, 2),
+                    "blue": 0,
+                    "green": 0,
+                    "yellow": 0,
+                    "red": 0,
                     "explanations": [],
-                    "explanation_source": "character"
-                })
+                    "explanation_source": "expectation"
+                }
 
-        candidates.sort(key=lambda x: x["score_color"], reverse=True)
-        print(f"🔍 DEBUG: Pure character matching found {len(candidates)} candidates")
+                matches_by_range[range_key].append(match_obj)
 
-        print("🔍 DEBUG: Candidate scores distribution:")
-        score_ranges = {"90+": 0, "80-89": 0, "70-79": 0, "60-69": 0, "below_60": 0}
-        for candidate in candidates:
-            score = candidate["final_score"]
-            if score >= 90:
-                score_ranges["90+"] += 1
-            elif score >= 80:
-                score_ranges["80-89"] += 1
-            elif score >= 70:
-                score_ranges["70-79"] += 1
-            elif score >= 60:
-                score_ranges["60-69"] += 1
-            else:
-                score_ranges["below_60"] += 1
+            user = Users.query.filter_by(user_id=user_id).first()
 
-        for range_name, count in score_ranges.items():
-            print(f"   {range_name}: {count} users")
-
-        print("🔍 DEBUG: Top 10 candidate scores:")
-        for i, candidate in enumerate(candidates[:10]):
-            print(
-                f"   {i+1}. {candidate['name']}: "
-                f"raw={candidate['score_color']:.3f}, percentage={candidate['final_score']}%"
-            )
-
-        matches_by_range = {
-            "90-100": [],
-            "80-89": [],
-            "70-79": [],
-            "60-69": [],
-            "below_60": []
-        }
-
-        for candidate in candidates:
-            score_percentage = candidate["final_score"]
-
-            if score_percentage >= 90:
-                range_key = "90-100"
-            elif score_percentage >= 80:
-                range_key = "80-89"
-            elif score_percentage >= 70:
-                range_key = "70-79"
-            elif score_percentage >= 60:
-                range_key = "60-69"
-            else:
-                range_key = "below_60"
-
-            matches_by_range[range_key].append(candidate)
-
-        print("🔍 DEBUG: Range distribution after grouping:")
-        for range_key, matches in matches_by_range.items():
-            if matches:
-                scores = [m["final_score"] for m in matches]
-                print(f"   {range_key}: {len(matches)} users, scores: {min(scores):.1f}% - {max(scores):.1f}%")
-            else:
-                print(f"   {range_key}: 0 users")
-
-        user = Users.query.filter_by(user_id=user_id).first()
-
-        input_user = {
-            "user_id": user_id,
-            "role": "marriage",
-            "name": user.name if user else "Unknown",
-            "blue": base_llm.blue,
-            "green": base_llm.green,
-            "yellow": base_llm.yellow,
-            "red": base_llm.red,
-            "created_at": base_llm.created_at.isoformat() if base_llm.created_at else None,
-        }
-
-        print(f"✅ DEBUG: Returning {len(candidates)} pure character matches (NO EXPECTATION FILTERING)")
-
-        return jsonify({
-            "input_user": input_user,
-            "matches": matches_by_range,
-            "count": len(candidates),
-            "mode": "character"
-        })
-
-    # 3) EXPECTATION + CHARACTER
-    else:
-        print("🎯 Using EXPECTATION + CHARACTER matching")
-
-        expectation_matches = match_expectation_with_profiles(user_id)
-
-        if not expectation_matches:
-            return jsonify({"error": f"No matches found for user_id={user_id}"}), 404
-
-        matches_by_range = {
-            "90-100": [],
-            "80-89": [],
-            "70-79": [],
-            "60-69": [],
-            "below_60": []
-        }
-
-        for match in expectation_matches:
-            score_percentage = match.get("overall_score", 0) * 100
-
-            if score_percentage >= 90:
-                range_key = "90-100"
-            elif score_percentage >= 80:
-                range_key = "80-89"
-            elif score_percentage >= 70:
-                range_key = "70-79"
-            elif score_percentage >= 60:
-                range_key = "60-69"
-            else:
-                range_key = "below_60"
-
-            match_obj = {
-                "user_id": match["user_id"],
-                "name": match["name"],
-                "gender": match.get("gender", ""),
-                "city": match.get("location", ""),
-                "final_score": round(score_percentage, 2),
-                "score_expect": match.get("expectation_score", 0),
-                "score_color": match.get("character_score", 0),
+            input_user = {
+                "user_id": user_id,
+                "role": role or "marriage",
+                "name": user.name if user else "Unknown",
                 "blue": 0,
                 "green": 0,
                 "yellow": 0,
                 "red": 0,
-                "explanations": [],
-                "explanation_source": "expectation"
+                "created_at": None,
             }
 
-            matches_by_range[range_key].append(match_obj)
+            print(f"✅ DEBUG: Returning {sum(len(v) for v in matches_by_range.values())} pure expectation matches")
 
-        user = Users.query.filter_by(user_id=user_id).first()
-        llm_data = LLMGeneratedQuestions.query.filter_by(user_id=user_id).first()
+            return jsonify({
+                "input_user": input_user,
+                "matches": matches_by_range,
+                "count": sum(len(v) for v in matches_by_range.values()),
+                "mode": "expectation-only"
+            })
 
-        input_user = {
-            "user_id": user_id,
-            "role": "marriage",
-            "name": user.name if user else "Unknown",
-            "blue": llm_data.blue if llm_data else 0,
-            "green": llm_data.green if llm_data else 0,
-            "yellow": llm_data.yellow if llm_data else 0,
-            "red": llm_data.red if llm_data else 0,
-            "created_at": llm_data.created_at.isoformat() if llm_data and llm_data.created_at else None,
-        }
+        # 2) CHARACTER ONLY
+        elif mode == "character":
+            print("🎯 Using PURE CHARACTER matching - NO EXPECTATION FILTERING")
 
-        print(f"✅ DEBUG: Returning {len(expectation_matches)} expectation + character matches")
+            current_user = Marriage.query.filter_by(user_id=user_id).first()
+            if not current_user:
+                return jsonify({"error": f"No marriage profile found for user_id={user_id}"}), 404
 
+            user_gender = (current_user.gender or "").strip().lower()
+            print(f"🔍 DEBUG: Current user gender: {user_gender}")
+
+            if user_gender.startswith("male"):
+                opposite_profiles = Marriage.query.filter(
+                    func.lower(func.trim(Marriage.gender)) == "female"
+                ).all()
+            elif user_gender.startswith("female"):
+                opposite_profiles = Marriage.query.filter(
+                    func.lower(func.trim(Marriage.gender)) == "male"
+                ).all()
+            else:
+                opposite_profiles = Marriage.query.filter(
+                    Marriage.gender != current_user.gender
+                ).all()
+
+            print(f"🔍 DEBUG: Found {len(opposite_profiles)} opposite gender profiles")
+
+            if exclude_self:
+                opposite_profiles = [p for p in opposite_profiles if p.user_id != user_id]
+
+            base_llm = LLMGeneratedQuestions.query.filter_by(user_id=user_id).first()
+            if not base_llm:
+                return jsonify({"error": f"No character data found for user_id={user_id}"}), 404
+
+            u_vec = base_llm.color_vec()
+
+            candidates = []
+            all_ids = [profile.user_id for profile in opposite_profiles]
+
+            if all_ids:
+                llm_data = LLMGeneratedQuestions.query.filter(
+                    LLMGeneratedQuestions.user_id.in_(all_ids)
+                ).all()
+            else:
+                llm_data = []
+
+            llm_map = {l.user_id: l for l in llm_data}
+
+            for profile in opposite_profiles:
+                if profile.user_id in llm_map:
+                    llm_other = llm_map[profile.user_id]
+                    v_vec = llm_other.color_vec()
+
+                    character_score = cosine_sim(u_vec, v_vec)
+                    score_percentage = round(character_score * 100, 2)
+
+                    candidates.append({
+                        "user_id": profile.user_id,
+                        "name": profile.full_name,
+                        "gender": profile.gender,
+                        "location": profile.current_city,
+                        "score_color": character_score,
+                        "score_expect": 0,
+                        "final_score": score_percentage,
+                        "blue": llm_other.blue,
+                        "green": llm_other.green,
+                        "yellow": llm_other.yellow,
+                        "red": llm_other.red,
+                        "explanations": [],
+                        "explanation_source": "character"
+                    })
+
+            candidates.sort(key=lambda x: x["score_color"], reverse=True)
+            candidates = candidates[:limit]
+
+            print(f"🔍 DEBUG: Pure character matching found {len(candidates)} candidates")
+
+            matches_by_range = {
+                "90-100": [],
+                "80-89": [],
+                "70-79": [],
+                "60-69": [],
+                "below_60": []
+            }
+
+            for candidate in candidates:
+                score_percentage = candidate["final_score"]
+
+                if score_percentage >= 90:
+                    range_key = "90-100"
+                elif score_percentage >= 80:
+                    range_key = "80-89"
+                elif score_percentage >= 70:
+                    range_key = "70-79"
+                elif score_percentage >= 60:
+                    range_key = "60-69"
+                else:
+                    range_key = "below_60"
+
+                matches_by_range[range_key].append(candidate)
+
+            print("🔍 DEBUG: Range distribution after grouping:")
+            for range_key, matches in matches_by_range.items():
+                if matches:
+                    scores = [m["final_score"] for m in matches]
+                    print(f"   {range_key}: {len(matches)} users, scores: {min(scores):.1f}% - {max(scores):.1f}%")
+                else:
+                    print(f"   {range_key}: 0 users")
+
+            user = Users.query.filter_by(user_id=user_id).first()
+
+            input_user = {
+                "user_id": user_id,
+                "role": role or "marriage",
+                "name": user.name if user else "Unknown",
+                "blue": base_llm.blue,
+                "green": base_llm.green,
+                "yellow": base_llm.yellow,
+                "red": base_llm.red,
+                "created_at": base_llm.created_at.isoformat() if base_llm.created_at else None,
+            }
+
+            print(f"✅ DEBUG: Returning {len(candidates)} pure character matches")
+
+            return jsonify({
+                "input_user": input_user,
+                "matches": matches_by_range,
+                "count": len(candidates),
+                "mode": "character"
+            })
+
+        # 3) EXPECTATION + CHARACTER
+        elif mode == "expectation":
+            print("🎯 Using EXPECTATION + CHARACTER matching")
+
+            expectation_matches = match_expectation_with_profiles(user_id)
+
+            print(f"🔍 DEBUG: expectation_matches type = {type(expectation_matches)}")
+            print(f"🔍 DEBUG: expectation_matches count = {len(expectation_matches) if expectation_matches else 0}")
+
+            if not expectation_matches:
+                return jsonify({"error": f"No matches found for user_id={user_id}"}), 404
+
+            matches_by_range = {
+                "90-100": [],
+                "80-89": [],
+                "70-79": [],
+                "60-69": [],
+                "below_60": []
+            }
+
+            for match in expectation_matches[:limit]:
+                score_percentage = match.get("overall_score", 0) * 100
+
+                if score_percentage >= 90:
+                    range_key = "90-100"
+                elif score_percentage >= 80:
+                    range_key = "80-89"
+                elif score_percentage >= 70:
+                    range_key = "70-79"
+                elif score_percentage >= 60:
+                    range_key = "60-69"
+                else:
+                    range_key = "below_60"
+
+                match_obj = {
+                    "user_id": match.get("user_id"),
+                    "name": match.get("name", "Unknown"),
+                    "gender": match.get("gender", ""),
+                    "city": match.get("location", ""),
+                    "final_score": round(score_percentage, 2),
+                    "score_expect": match.get("expectation_score", 0),
+                    "score_color": match.get("character_score", 0),
+                    "blue": 0,
+                    "green": 0,
+                    "yellow": 0,
+                    "red": 0,
+                    "explanations": [],
+                    "explanation_source": "expectation"
+                }
+
+                matches_by_range[range_key].append(match_obj)
+
+            user = Users.query.filter_by(user_id=user_id).first()
+            llm_data = LLMGeneratedQuestions.query.filter_by(user_id=user_id).first()
+
+            input_user = {
+                "user_id": user_id,
+                "role": role or "marriage",
+                "name": user.name if user else "Unknown",
+                "blue": llm_data.blue if llm_data else 0,
+                "green": llm_data.green if llm_data else 0,
+                "yellow": llm_data.yellow if llm_data else 0,
+                "red": llm_data.red if llm_data else 0,
+                "created_at": llm_data.created_at.isoformat() if llm_data and llm_data.created_at else None,
+            }
+
+            print(f"✅ DEBUG: Returning {sum(len(v) for v in matches_by_range.values())} expectation + character matches")
+
+            return jsonify({
+                "input_user": input_user,
+                "matches": matches_by_range,
+                "count": sum(len(v) for v in matches_by_range.values()),
+                "mode": "expectation"
+            })
+
+    except Exception as e:
+        print(f"🔴 ERROR in unified_match: {str(e)}")
+        traceback.print_exc()
         return jsonify({
-            "input_user": input_user,
-            "matches": matches_by_range,
-            "count": len(expectation_matches),
-            "mode": "expectation"
-        })
+            "error": "Internal server error",
+            "details": str(e)
+        }), 500
 
 
 @matching_bp.get("/compatibility-explanation")
@@ -330,7 +348,7 @@ def unified_match(user_id=None):
 def get_compatibility_explanation():
     user_id = request.args.get("user_id", type=int)
     target_user_id = request.args.get("target_user_id", type=int)
-    mode = request.args.get("mode", "expectation-only")
+    mode = request.args.get("mode", "expectation-only").strip().lower()
 
     if not user_id or not target_user_id:
         return jsonify({"error": "user_id and target_user_id are required"}), 400
