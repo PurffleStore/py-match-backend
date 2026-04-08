@@ -176,57 +176,122 @@ def submit_answers():
 @profiles_bp.route('/api/questions/existing-profile/<role>/<int:user_id>', methods=['GET'])
 def get_existing_profile(role: str, user_id: int):
     """Get existing profile data for a user"""
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        
-        # Determine table based on role
+
         table_map = {
             "marriage": "Marriage",
-            "interview": "Interview", 
+            "interview": "Interview",
             "partnership": "Partnership"
         }
-        
+
         table_name = table_map.get(role.lower())
         if not table_name:
             return jsonify({"error": "Invalid role"}), 400
-        
-        cur.execute(f"""
-            SELECT TOP 1 * FROM {table_name} 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC
-        """, (user_id,))
-        
+
+        # Detect driver module
+        driver_module = conn.__class__.__module__.lower()
+
+        if "pyodbc" in driver_module:
+            query = f"""
+                SELECT TOP 1 * FROM {table_name}
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+            """
+        else:
+            query = f"""
+                SELECT TOP 1 * FROM {table_name}
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+            """
+
+        cur.execute(query, (user_id,))
+
         row = cur.fetchone()
         if row is None:
             return jsonify({"error": "No profile found"}), 404
-            
-        # Convert row to dict
+
         profile = row_to_dict(cur, row)
-        
-        # 🚨 CRITICAL: Clean up data for radio buttons
-        # Ensure radio button values are clean strings that match option values
+
         for key, value in profile.items():
             if value is not None:
-                # Convert to string and trim for consistency
                 if isinstance(value, bool):
                     profile[key] = "Yes" if value else "No"
                 elif isinstance(value, (int, float)):
                     profile[key] = str(value)
                 elif isinstance(value, str):
                     profile[key] = value.strip()
-        
+
         print(f"🟢 DEBUG: Returning cleaned profile data for user {user_id}")
         return jsonify(profile), 200
-        
+
     except Exception as e:
         print(f"Error fetching existing profile: {e}")
         return jsonify({"error": str(e)}), 500
+
     finally:
         try:
-            conn.close()
+            if conn:
+                conn.close()
         except:
             pass
+
+# @profiles_bp.route('/api/questions/existing-profile/<role>/<int:user_id>', methods=['GET'])
+# def get_existing_profile(role: str, user_id: int):
+#     """Get existing profile data for a user"""
+#     try:
+#         conn = get_db_connection()
+#         cur = conn.cursor()
+        
+#         # Determine table based on role
+#         table_map = {
+#             "marriage": "Marriage",
+#             "interview": "Interview", 
+#             "partnership": "Partnership"
+#         }
+        
+#         table_name = table_map.get(role.lower())
+#         if not table_name:
+#             return jsonify({"error": "Invalid role"}), 400
+        
+#         cur.execute(f"""
+#             SELECT TOP 1 * FROM {table_name} 
+#             WHERE user_id = ? 
+#             ORDER BY created_at DESC
+#         """, (user_id,))
+        
+#         row = cur.fetchone()
+#         if row is None:
+#             return jsonify({"error": "No profile found"}), 404
+            
+#         # Convert row to dict
+#         profile = row_to_dict(cur, row)
+        
+#         # 🚨 CRITICAL: Clean up data for radio buttons
+#         # Ensure radio button values are clean strings that match option values
+#         for key, value in profile.items():
+#             if value is not None:
+#                 # Convert to string and trim for consistency
+#                 if isinstance(value, bool):
+#                     profile[key] = "Yes" if value else "No"
+#                 elif isinstance(value, (int, float)):
+#                     profile[key] = str(value)
+#                 elif isinstance(value, str):
+#                     profile[key] = value.strip()
+        
+#         print(f"🟢 DEBUG: Returning cleaned profile data for user {user_id}")
+#         return jsonify(profile), 200
+        
+#     except Exception as e:
+#         print(f"Error fetching existing profile: {e}")
+#         return jsonify({"error": str(e)}), 500
+#     finally:
+#         try:
+#             conn.close()
+#         except:
+#             pass
 
 @profiles_bp.route('/api/questions/update-answers/<role>', methods=['PUT'])
 def update_answers(role: str):
