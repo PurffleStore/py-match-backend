@@ -398,18 +398,18 @@ def get_existing_profile(role: str, user_id: int):
         except:
             pass
 
-
-
 @profiles_bp.route('/api/questions/update-answers/<role>', methods=['PUT'])
 def update_answers(role: str):
     """Update existing profile answers"""
-    data = request.get_json(force=True) or {}
-    user_id = data.get("user_id")
-    
-    if not user_id:
-        return jsonify({"error": "User ID is required."}), 400
+    conn = None
+    try:
+        data = request.get_json(force=True) or {}
+        user_id = data.get("user_id")
 
-    role_fields = {
+        if not user_id:
+            return jsonify({"error": "User ID is required."}), 400
+
+        role_fields = {
             "marriage": [
                 "full_name", "date_of_birth", "gender", "current_city", "marital_status",
                 "education_level", "employment_status", "number_of_siblings", "family_type",
@@ -423,80 +423,182 @@ def update_answers(role: str):
                 "career_aspirations", "field_of_study", "remark", "children_timeline",
                 "open_to_adoption", "deal_breakers", "other_non_negotiables",
                 "health_constraints", "live_with_inlaws"
-                # Note: "created_at" is excluded (auto-generated)
             ]
         }
 
-    if role not in role_fields:
-        return jsonify({"error": f"Invalid role: {role}"}), 400
+        if role not in role_fields:
+            return jsonify({"error": f"Invalid role: {role}"}), 400
 
-    try:
         conn = get_db_connection()
         cur = conn.cursor()
 
+        driver_module = conn.__class__.__module__.lower()
+        print("DB DRIVER MODULE:", driver_module)
+
         table_name = "Marriage" if role == "marriage" else role.capitalize()
-        
-        # Build UPDATE query - only include fields that are present in data
+
         set_parts = []
         values = []
-        
+
         for field in role_fields[role]:
             if field in data:
-                set_parts.append(f"{field} = ?")
                 val = data.get(field)
-                # Handle radio button values (convert 1/0 to yes/no)
+
                 if field in ["dual_citizenship", "live_with_parents", "support_parents_financially", "own_pets"]:
                     if val == 1 or val == "1" or val is True:
                         val = "Yes"
                     elif val == 0 or val == "0" or val is False:
                         val = "No"
-                    # If it's already "Yes" or "no", leave it as is
                     elif val not in ["Yes", "No"]:
-                        val = "No"  # default to "no" if invalid value
-                # Handle list values (multiselect)
+                        val = "No"
+
                 if isinstance(val, list):
                     val = ", ".join([str(v) for v in val])
 
-                # Convert to string or None
-                if val is None:
-                    val = None
-                else:
+                if val is not None:
                     val = str(val)
+
+                if "pyodbc" in driver_module:
+                    set_parts.append(f"{field} = ?")
+                else:
+                    set_parts.append(f"{field} = %s")
 
                 values.append(val)
 
         if not set_parts:
             return jsonify({"error": "No valid fields to update"}), 400
 
-        # Add user_id for WHERE clause
         values.append(user_id)
-        
         set_clause = ", ".join(set_parts)
-        query = f"UPDATE {table_name} SET {set_clause} WHERE user_id = ?"
+
+        if "pyodbc" in driver_module:
+            query = f"UPDATE {table_name} SET {set_clause} WHERE user_id = ?"
+        else:
+            query = f"UPDATE {table_name} SET {set_clause} WHERE user_id = %s"
 
         print(f"DEBUG: Executing update query: {query}")
         print(f"DEBUG: Values: {values}")
 
-        cur.execute(query, values)
+        cur.execute(query, tuple(values))
         conn.commit()
 
-        # Check if any row was updated
         if cur.rowcount == 0:
             return jsonify({"error": "No profile found to update"}), 404
 
         return jsonify({"message": "Profile updated successfully."}), 200
 
-    except pyodbc.Error as e:
-        print(f"Database Error: {e}")
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
     except Exception as e:
-        print(f"Unexpected Error: {e}")
-        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
+        print(f"Error updating profile: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
     finally:
         try:
-            conn.close()
+            if conn:
+                conn.close()
         except:
             pass
+
+
+
+# @profiles_bp.route('/api/questions/update-answers/<role>', methods=['PUT'])
+# def update_answers(role: str):
+#     """Update existing profile answers"""
+#     data = request.get_json(force=True) or {}
+#     user_id = data.get("user_id")
+    
+#     if not user_id:
+#         return jsonify({"error": "User ID is required."}), 400
+
+#     role_fields = {
+#             "marriage": [
+#                 "full_name", "date_of_birth", "gender", "current_city", "marital_status",
+#                 "education_level", "employment_status", "number_of_siblings", "family_type",
+#                 "hobbies_interests", "conflict_approach", "financial_style", "income_range",
+#                 "relocation_willingness", "height", "skin_tone", "languages_spoken", "country",
+#                 "blood_group", "religion", "dual_citizenship", "siblings_position",
+#                 "parents_living_status", "live_with_parents", "support_parents_financially",
+#                 "family_communication_frequency", "food_preference", "smoking_habit",
+#                 "alcohol_habit", "daily_routine", "fitness_level", "own_pets",
+#                 "travel_preference", "relaxation_mode", "job_role", "work_experience_years",
+#                 "career_aspirations", "field_of_study", "remark", "children_timeline",
+#                 "open_to_adoption", "deal_breakers", "other_non_negotiables",
+#                 "health_constraints", "live_with_inlaws"
+#                 # Note: "created_at" is excluded (auto-generated)
+#             ]
+#         }
+
+#     if role not in role_fields:
+#         return jsonify({"error": f"Invalid role: {role}"}), 400
+
+#     try:
+#         conn = get_db_connection()
+#         cur = conn.cursor()
+
+#         table_name = "Marriage" if role == "marriage" else role.capitalize()
+        
+#         # Build UPDATE query - only include fields that are present in data
+#         set_parts = []
+#         values = []
+        
+#         for field in role_fields[role]:
+#             if field in data:
+#                 set_parts.append(f"{field} = ?")
+#                 val = data.get(field)
+#                 # Handle radio button values (convert 1/0 to yes/no)
+#                 if field in ["dual_citizenship", "live_with_parents", "support_parents_financially", "own_pets"]:
+#                     if val == 1 or val == "1" or val is True:
+#                         val = "Yes"
+#                     elif val == 0 or val == "0" or val is False:
+#                         val = "No"
+#                     # If it's already "Yes" or "no", leave it as is
+#                     elif val not in ["Yes", "No"]:
+#                         val = "No"  # default to "no" if invalid value
+#                 # Handle list values (multiselect)
+#                 if isinstance(val, list):
+#                     val = ", ".join([str(v) for v in val])
+
+#                 # Convert to string or None
+#                 if val is None:
+#                     val = None
+#                 else:
+#                     val = str(val)
+
+#                 values.append(val)
+
+#         if not set_parts:
+#             return jsonify({"error": "No valid fields to update"}), 400
+
+#         # Add user_id for WHERE clause
+#         values.append(user_id)
+        
+#         set_clause = ", ".join(set_parts)
+#         query = f"UPDATE {table_name} SET {set_clause} WHERE user_id = ?"
+
+#         print(f"DEBUG: Executing update query: {query}")
+#         print(f"DEBUG: Values: {values}")
+
+#         cur.execute(query, values)
+#         conn.commit()
+
+#         # Check if any row was updated
+#         if cur.rowcount == 0:
+#             return jsonify({"error": "No profile found to update"}), 404
+
+#         return jsonify({"message": "Profile updated successfully."}), 200
+
+#     except pyodbc.Error as e:
+#         print(f"Database Error: {e}")
+#         return jsonify({"error": f"Database error: {str(e)}"}), 500
+#     except Exception as e:
+#         print(f"Unexpected Error: {e}")
+#         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
+#     finally:
+#         try:
+#             conn.close()
+#         except:
+#             pass
 
 @profiles_bp.route('/api/marriage-profile/<int:user_id>', methods=['GET'])
 def get_marriage_profile(user_id: int):
