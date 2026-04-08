@@ -173,6 +173,8 @@ def submit_answers():
         except:
             pass
 
+
+
 # @profiles_bp.route('/api/questions/existing-profile/<role>/<int:user_id>', methods=['GET'])
 # def get_existing_profile(role: str, user_id: int):
 #     """Get existing profile data for a user"""
@@ -191,23 +193,29 @@ def submit_answers():
 #         if not table_name:
 #             return jsonify({"error": "Invalid role"}), 400
 
-#         # Detect driver module
 #         driver_module = conn.__class__.__module__.lower()
+#         print("DB DRIVER MODULE:", driver_module)
 
+#         # SQL Server / pyodbc
 #         if "pyodbc" in driver_module:
 #             query = f"""
 #                 SELECT TOP 1 * FROM {table_name}
 #                 WHERE user_id = ?
 #                 ORDER BY created_at DESC
 #             """
+#             params = (user_id,)
+
+#         # MySQL / MariaDB
 #         else:
 #             query = f"""
-#                 SELECT TOP 1 * FROM {table_name}
+#                 SELECT * FROM {table_name}
 #                 WHERE user_id = %s
 #                 ORDER BY created_at DESC
+#                 LIMIT 1
 #             """
+#             params = (user_id,)
 
-#         cur.execute(query, (user_id,))
+#         cur.execute(query, params)
 
 #         row = cur.fetchone()
 #         if row is None:
@@ -224,7 +232,7 @@ def submit_answers():
 #                 elif isinstance(value, str):
 #                     profile[key] = value.strip()
 
-#         print(f"🟢 DEBUG: Returning cleaned profile data for user {user_id}")
+#         print(f"Returning cleaned profile data for user {user_id}")
 #         return jsonify(profile), 200
 
 #     except Exception as e:
@@ -260,7 +268,6 @@ def get_existing_profile(role: str, user_id: int):
         driver_module = conn.__class__.__module__.lower()
         print("DB DRIVER MODULE:", driver_module)
 
-        # SQL Server / pyodbc
         if "pyodbc" in driver_module:
             query = f"""
                 SELECT TOP 1 * FROM {table_name}
@@ -268,8 +275,6 @@ def get_existing_profile(role: str, user_id: int):
                 ORDER BY created_at DESC
             """
             params = (user_id,)
-
-        # MySQL / MariaDB
         else:
             query = f"""
                 SELECT * FROM {table_name}
@@ -280,16 +285,27 @@ def get_existing_profile(role: str, user_id: int):
             params = (user_id,)
 
         cur.execute(query, params)
-
         row = cur.fetchone()
+
+        print("ROW TYPE:", type(row))
+        print("ROW VALUE:", row)
+
         if row is None:
             return jsonify({"error": "No profile found"}), 404
 
-        profile = row_to_dict(cur, row)
+        # Handle both tuple rows and dict rows
+        if isinstance(row, dict):
+            profile = dict(row)
+        else:
+            columns = [col[0] for col in cur.description]
+            profile = dict(zip(columns, row))
 
+        # Clean values
         for key, value in profile.items():
             if value is not None:
-                if isinstance(value, bool):
+                if hasattr(value, "isoformat"):
+                    profile[key] = value.isoformat()
+                elif isinstance(value, bool):
                     profile[key] = "Yes" if value else "No"
                 elif isinstance(value, (int, float)):
                     profile[key] = str(value)
@@ -301,6 +317,8 @@ def get_existing_profile(role: str, user_id: int):
 
     except Exception as e:
         print(f"Error fetching existing profile: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
     finally:
@@ -310,60 +328,7 @@ def get_existing_profile(role: str, user_id: int):
         except:
             pass
 
-# @profiles_bp.route('/api/questions/existing-profile/<role>/<int:user_id>', methods=['GET'])
-# def get_existing_profile(role: str, user_id: int):
-#     """Get existing profile data for a user"""
-#     try:
-#         conn = get_db_connection()
-#         cur = conn.cursor()
-        
-#         # Determine table based on role
-#         table_map = {
-#             "marriage": "Marriage",
-#             "interview": "Interview", 
-#             "partnership": "Partnership"
-#         }
-        
-#         table_name = table_map.get(role.lower())
-#         if not table_name:
-#             return jsonify({"error": "Invalid role"}), 400
-        
-#         cur.execute(f"""
-#             SELECT TOP 1 * FROM {table_name} 
-#             WHERE user_id = ? 
-#             ORDER BY created_at DESC
-#         """, (user_id,))
-        
-#         row = cur.fetchone()
-#         if row is None:
-#             return jsonify({"error": "No profile found"}), 404
-            
-#         # Convert row to dict
-#         profile = row_to_dict(cur, row)
-        
-#         # 🚨 CRITICAL: Clean up data for radio buttons
-#         # Ensure radio button values are clean strings that match option values
-#         for key, value in profile.items():
-#             if value is not None:
-#                 # Convert to string and trim for consistency
-#                 if isinstance(value, bool):
-#                     profile[key] = "Yes" if value else "No"
-#                 elif isinstance(value, (int, float)):
-#                     profile[key] = str(value)
-#                 elif isinstance(value, str):
-#                     profile[key] = value.strip()
-        
-#         print(f"🟢 DEBUG: Returning cleaned profile data for user {user_id}")
-#         return jsonify(profile), 200
-        
-#     except Exception as e:
-#         print(f"Error fetching existing profile: {e}")
-#         return jsonify({"error": str(e)}), 500
-#     finally:
-#         try:
-#             conn.close()
-#         except:
-#             pass
+
 
 @profiles_bp.route('/api/questions/update-answers/<role>', methods=['PUT'])
 def update_answers(role: str):
