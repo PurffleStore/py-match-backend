@@ -53,25 +53,85 @@ def select_role():
         except:
             pass
 
+# @profiles_bp.route('/api/questions/marriage', methods=['GET'])
+# def get_questions():
+#     try:
+#         conn = get_db_connection()
+#         cur = conn.cursor()
+#         cur.execute("""
+#             SELECT question, options, input_type, column_key, category
+#             FROM RoleQuestions
+#             WHERE role_name = 'marriage'
+#             ORDER BY id
+#         """)
+#         rows = cur.fetchall()
+#         out = []
+#         for r in rows:
+#             label = r[0]
+#             options = (r[1].split(",") if r[1] else [])
+#             input_type = r[2]
+#             column_key = r[3]
+#             category = r[4]
+#             out.append({
+#                 "label": label,
+#                 "options": options,
+#                 "input_type": input_type,
+#                 "column_key": column_key,
+#                 "category": category
+#             })
+#         return jsonify(out), 200
+#     except pyodbc.Error as e:
+#         return jsonify({"error": str(e)}), 500
+#     finally:
+#         try: conn.close()
+#         except: pass
+
+
 @profiles_bp.route('/api/questions/marriage', methods=['GET'])
 def get_questions():
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("""
-            SELECT question, options, input_type, column_key, category
-            FROM RoleQuestions
-            WHERE role_name = 'marriage'
-            ORDER BY id
-        """)
+
+        driver_module = conn.__class__.__module__.lower()
+        print("DB DRIVER MODULE:", driver_module)
+
+        if "pyodbc" in driver_module:
+            query = """
+                SELECT question, [options] AS question_options, input_type, column_key, category
+                FROM RoleQuestions
+                WHERE role_name = 'marriage'
+                ORDER BY id
+            """
+        else:
+            query = """
+                SELECT question, `options` AS question_options, input_type, column_key, category
+                FROM RoleQuestions
+                WHERE role_name = 'marriage'
+                ORDER BY id
+            """
+
+        cur.execute(query)
         rows = cur.fetchall()
+
         out = []
         for r in rows:
-            label = r[0]
-            options = (r[1].split(",") if r[1] else [])
-            input_type = r[2]
-            column_key = r[3]
-            category = r[4]
+            if isinstance(r, dict):
+                label = r.get("question")
+                raw_options = r.get("question_options")
+                input_type = r.get("input_type")
+                column_key = r.get("column_key")
+                category = r.get("category")
+            else:
+                label = r[0]
+                raw_options = r[1]
+                input_type = r[2]
+                column_key = r[3]
+                category = r[4]
+
+            options = [x.strip() for x in raw_options.split(",")] if raw_options else []
+
             out.append({
                 "label": label,
                 "options": options,
@@ -79,12 +139,22 @@ def get_questions():
                 "column_key": column_key,
                 "category": category
             })
+
         return jsonify(out), 200
-    except pyodbc.Error as e:
+
+    except Exception as e:
+        print(f"Error fetching marriage questions: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
     finally:
-        try: conn.close()
-        except: pass
+        try:
+            if conn:
+                conn.close()
+        except:
+            pass
+
 
 @profiles_bp.route('/api/questions/submit-answers/marriage', methods=['POST'])
 def submit_answers():

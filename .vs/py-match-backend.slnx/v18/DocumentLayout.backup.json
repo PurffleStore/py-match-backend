@@ -14,16 +14,8 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 2,
+          "SelectedChildIndex": 0,
           "Children": [
-            {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{004be353-6879-467c-9d1e-9ac23cdf6d49}"
-            },
-            {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{34e76e81-ee4a-11d0-ae2e-00a0c90fffc3}"
-            },
             {
               "$type": "Document",
               "DocumentIndex": 0,
@@ -32,10 +24,14 @@
               "RelativeDocumentMoniker": "routes\\profile_routes.py",
               "ToolTip": "C:\\Oviya\\Py-Match\\deployment\\py-match-backend\\routes\\profile_routes.py",
               "RelativeToolTip": "routes\\profile_routes.py",
-              "ViewState": "AgIAAC0BAAAAAAAAAAAowDUBAAAPAAAAAAAAAA==",
+              "ViewState": "AgIAAAYBAAAAAAAAAAAowBcBAAApAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
               "WhenOpened": "2026-04-08T08:31:06.233Z",
               "EditorCaption": ""
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{34e76e81-ee4a-11d0-ae2e-00a0c90fffc3}"
             }
           ]
         }
